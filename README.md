@@ -1,2 +1,94 @@
 # auto_task
-Python实现跨平台批量运维小神器 
+
+这阵子一直在学python，碰巧最近想把线上服务器环境做一些规范化/统一化，于是便萌生了用python写一个小工具的冲动。就功能方面来说，基本上是在“重复造轮子”吧，但是当我用这小工具完成了30多台服务器从系统层面到应用层面的一些规范化工作之后，觉得效果还不算那么low（有点自吹~），这才敢拿出来跟小伙伴们分享一下。
+
+(注：笔者所用为python版本为3.5)
+
+#### 经过数次修改，现在主要功能包括：
+- 可批量执行远程命令，上传下载文件
+- 支持多线程并发执行（对于某些耗时的命令或上传文件，可大大减少等待时间）
+- 严格模式（批量执行中若某一台server执行错误则退出）和非严格模式
+- 上传下载文件实现了类似rsync的机制
+- 完善的命令行提示
+- 跨平台，Linux和Windows均可
+
+#### 大致设计和实现思路如下：
+- 外部包依赖docopt和paramiko
+- 有一个server信息文件，内容格式为 ： “主机名-IP:端口”。脚本读取此文件来决定要对哪些server进行操作（该文件内部支持#注释掉某些server）
+- 采用了docopt提供命令行界面
+- paramiko模块实现远程命令和sftp客户端功能。这里paramiko的sftp实例其只包含了基本的单个文件传输功能；并且不保存文件相关时间信息。
+- paramiko 通过sftp实例传输文件环节，这里额外实现“保持文件时间信息”和“实现目录传输”以及“实现类似rsync的传输机制”是要考虑很多问题和逻辑的。传输机制模仿rsync的默认机制，检查文件的mtime和size，有差异才会真正传输。
+- 实现了参数中原路径和目标路径的自动判断，例如传输目录时不要求路径后面加‘/’
+- 对于远程命令（cmd），可以通过设置（--skip-err）跳过某些server的错误继续执行。例如批量执行‘ls’命令，一般情况会因为某些server上不存在而报错退出
+- 全面的错误信息提示。对于执行中的几乎所有可能出现的错误，都有捕获机制获取并输出
+
+#### 下面先来看一些基本的使用
+**帮助信息：**
+```
+shells]# auto_task --help
+Usage:
+  auto_task [options] cmd <command> [--skip-err] [--parallel]
+  auto_task [options] put <src> <dst> [--parallel]
+  auto_task [options] get <src> <dst>
+
+
+Options:
+  -h --help             Show this screen.
+  -u <user>             Remote username [default: root]
+  -p <password>         User's password
+  --pkey <private-key>  Local private key [default: /root/.ssh/id_rsa]
+  --server <server_info_file>  
+                        File include the remote server's information,
+                        With the format of 'name-ip:port', such as 'web1-192.168.1.100:22',one server one line.
+  --skip-err            Use with cmd, if sikp any server's error and continue process the other servers [default: False].
+  --parallel            Parallel execution, only use with cmd or put. This option implies the --skip-err [default: False].
+
+  cmd                   Run command on remote server(s),multiple commands sperate by ';'
+  put                   Transfer from local to remote. Transport mechanism similar to rsync.
+  get                   Transfer from remote to local. Transport mechanism similar to rsync.
+
+  Notice:       cmd, get, put can only use one at once
+  For Windows:  always use double quotes for quote something;
+                it's highly recommend that with get or put in Windows,always use '/' instead of '\'
+```
+**批量执行远程命令:**
+```
+shells]# auto_task -uroot --server name-ip-port.txt cmd "echo 123"
+
+--------web13
+        ----result:
+            123
+
+--------web14
+        ----result:
+            123
+```
+**上传:**
+```
+shells]# auto_task -uroot --server name-ip-port.txt put /tmp/ljkapi /tmp/ljkapi
+
+--------web13
+    ----Uploading /tmp/ljkapi TO /tmp/ljkapi
+        ----Create Remote Dir: /tmp/ljkapi
+            /tmp/ljkapi/date.txt
+        ----Create Remote Dir: /tmp/ljkapi/api
+            /tmp/ljkapi/api/demo.tmp
+
+--------web14
+    ----Uploading /tmp/ljkapi TO /tmp/ljkapi
+        ----Create Remote Dir: /tmp/ljkapi
+            /tmp/ljkapi/date.txt
+        ----Create Remote Dir: /tmp/ljkapi/api
+            /tmp/ljkapi/api/demo.tmp
+```
+**下载**
+```
+shells]# auto_task -uroot --server name-ip-port.txt get /tmp/ljkapi /tmp/kkk
+
+--------web13
+    ----Downloading /tmp/ljkapi TO /tmp/kkk
+        ----Create Local Dir: /tmp/kkk/
+            /tmp/ljkapi/date.txt
+        ----Create Local Dir: /tmp/kkk/api
+            /tmp/ljkapi/api/demo.tmp
+```
