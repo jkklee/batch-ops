@@ -2,7 +2,7 @@
 # coding:utf-8
 """
 Usage:
-  auto_task [options] cmd <comand> [--skip-err]
+  auto_task [options] cmd <command> [--skip-err]
   auto_task [options] get <src> <dst>
   auto_task [options] put <src> <dst>
 
@@ -33,7 +33,7 @@ from docopt import docopt
 from paramiko import SSHClient, AutoAddPolicy
 from os import path, walk, makedirs, stat, utime
 from re import split, match, search
-from sys import exit
+from sys import exit, stdout
 import platform
 from math import floor
 
@@ -49,8 +49,14 @@ def get_ip_port(fname):
                     port = int(list_tmp[2])
                     yield (server_name, server_ip, port)
     except Exception as err:
-        print(err)
+        print_color(err)
         exit(10)
+
+def print_color(text, color=31, sep=' ', end='\n', file=stdout, flush=False):
+    """打印彩色字体,color默认为红色"""
+    print('\033[0;{}m'.format(color), end='')
+    print(text, sep=sep, end=end, file=file, flush=flush)
+    print('\033[0m', end='')
 
 def create_sshclient(server_ip, port):
     """根据命令行提供的参数，建立到远程server的ssh链接.这段本应在run_command()函数内部。
@@ -61,7 +67,7 @@ def create_sshclient(server_ip, port):
     try:
         client.connect(server_ip, port=port, username=arguments['-u'], password=arguments['-p'], key_filename=arguments['--pkey'])
     except Exception as err:  # 有异常，打印异常，并返回'error'
-        print('{}----{} ssh connect error: {}'.format(' ' * 4, server_ip, err))
+        print_color('{}----{} ssh connect error: {}'.format(' ' * 4, server_ip, err))
         return 'error'
 
 # ----------
@@ -72,24 +78,24 @@ def run_command():
     # stdout 假如通过分号提供单行的多条命令，所有命令的输出（在linux终端会输出的内容）都会存储于stdout
     # 据观察，下面三个变量的特点是无论"如何引用过一次"之后，其内容就会清空
     # 有readlines()的地方都是流，用过之后就没有了
-    stdin, stdout, stderr = client.exec_command(arguments['<comand>'])
+    stdin, stdout, stderr = client.exec_command(arguments['<command>'])
     copy_out, copy_err = stdout.readlines(), stderr.readlines()
     if len(copy_out) and len(copy_err):
         print('%s----result:' % (' ' * 8))
         for i in copy_out:
             print('%s%s' % (' ' * 12, i), end='')
         for i in copy_err:
-            print('%s%s' % (' ' * 12, i), end='')
+            print_color('%s%s' % (' ' * 12, i), end='')
         if not arguments['--skip-err']:    # 忽略命令执行错误的情况
             exit(10)
     elif len(copy_out):
         print('%s----result:' % (' ' * 8))
         for i in copy_out:
-            print('%s%s' % (' ' * 12, i), end='')            
-    elif len(copy_err):
-        print('%s----error:' % (' ' * 8))
-        for i in copy_err:
             print('%s%s' % (' ' * 12, i), end='')
+    elif len(copy_err):
+        print_color('%s----error:' % (' ' * 8))
+        for i in copy_err:
+            print_color('%s%s' % (' ' * 12, i), end='')
         if not arguments['--skip-err']:
             exit(10)
     client.close()
@@ -104,7 +110,7 @@ def sftp_transfer(source_path, destination_path, method):
     sftp = client.open_sftp()
     
     if platform.system() == 'Windows':
-        """根据put或get,将windows路径中的'\'分隔符替换为'/'"""
+        '''根据put或get,将windows路径中的 \ 分隔符替换为 / '''
         if arguments["put"]:
             source_path = source_path.replace('\\', '/')
         elif arguments["get"]:
@@ -130,8 +136,8 @@ def sftp_transfer(source_path, destination_path, method):
                 sftp.put(src, dst)
                 print('%s%s' % (' ' * space, src))
             except Exception as err:
-                print('%s----Uploading %s Failed' % (' ' * (space-4), src))
-                print('{}----{}'.format(' ' * (space-4), err))
+                print_color('%s----Uploading %s Failed' % (' ' * (space-4), src))
+                print_color('{}----{}'.format(' ' * (space-4), err))
                 exit(10)
 
     def sftp_get(src, dst, space):
@@ -147,8 +153,8 @@ def sftp_transfer(source_path, destination_path, method):
                 sftp.get(src, dst)
                 print('%s%s' % (' ' * space, src))
             except Exception as err:
-                print('%s----Downloading %s Failed' % (' ' * (space-4), src))
-                print('{}----{}'.format(' ' * (space-4), err))
+                print_color('%s----Downloading %s Failed' % (' ' * (space-4), src))
+                print_color('{}----{}'.format(' ' * (space-4), err))
                 exit(10)
 
     def sftp_transfer_rcmd(cmd=None, space=None):
@@ -157,7 +163,7 @@ def sftp_transfer(source_path, destination_path, method):
         copy_out, copy_err = stdout.readlines(), stderr.readlines()
         if len(copy_err):
             for i in copy_err:
-                print('%s----%s' % (' ' * space, i), end='')
+                print_color('%s----%s' % (' ' * space, i), end='')
             exit(10)
         elif len(copy_out):
             return copy_out
@@ -189,12 +195,11 @@ def sftp_transfer(source_path, destination_path, method):
                 print('%s----Create Local Dir: %s' % (' ' * space, target))
                 makedirs(target)
             except Exception as err:
-                print('%s----%s' % (' ' * space, str(err)))
+                print_color('%s----%s' % (' ' * space, str(err)))
                 exit(10)
         elif location == 'remote':
             print('%s----Create Remote Dir: %s' % (' ' * space, target))
             sftp_transfer_rcmd(cmd='mkdir -p {}'.format(target), space=space)
-    
     # -----子函数定义完毕-----
 
     # -----上传逻辑-----
@@ -217,15 +222,15 @@ def sftp_transfer(source_path, destination_path, method):
         elif path.isdir(source_path):
             '''判断src是目录'''
             if check_remote_path(destination_path) == 'file':
-                print('%s----%s is file' % (' ' * 8, destination_path))
+                print_color('%s----%s is file' % (' ' * 8, destination_path))
                 exit(10)
             source_path, destination_path = process_arg_dir(source_path), process_arg_dir(destination_path)
             for root, dirs, files in walk(source_path):
-                """通过 os.walk()函数取得目录下的所有文件,此函数默认包含 . ..的文件/目录,需要去掉"""
+                '''通过 os.walk()函数取得目录下的所有文件,此函数默认包含 . ..的文件/目录,需要去掉'''
                 for file_name in files:
                     s_file = path.join(root, file_name)  # 逐级取得每个sftp client端文件的全路径
                     if not search('.*/\..*', s_file):
-                        """过滤掉路径中包含以.开头的目录或文件"""
+                        '''过滤掉路径中包含以.开头的目录或文件'''
                         d_file = s_file.replace(source_path, destination_path, 1)  # 由local_file取得每个远程文件的全路径
                         d_path = path.dirname(d_file)
                         check_remote_path_result = check_remote_path(d_path)
@@ -237,7 +242,7 @@ def sftp_transfer(source_path, destination_path, method):
 
                         sftp.utime(d_file, file_time(s_file, 'local'))
         else:
-            print('%s%s is not exist' % (' ' * 8, source_path))
+            print_color('%s%s is not exist' % (' ' * 8, source_path))
             exit(10)
 
     # -----下载逻辑-----
@@ -262,7 +267,7 @@ def sftp_transfer(source_path, destination_path, method):
         elif check_remote_path_result == 'directory':
             '''判断source_path是目录'''
             if path.isfile(destination_path):
-                print('%s----%s is file' % (' ' * 8, destination_path))
+                print_color('%s----%s is file' % (' ' * 8, destination_path))
                 exit(10)
             source_path, destination_path = process_arg_dir(source_path), process_arg_dir(destination_path)
 
@@ -275,7 +280,7 @@ def sftp_transfer(source_path, destination_path, method):
                 if not path.exists(d_path):  # 若目标目录不存在则创建
                     create_dir(d_path, 'local', 8)
                 for name in (i for i in sftp.listdir(path=path_name) if not i.startswith('.')):
-                    """去掉以.开头的文件或目录"""
+                    '''去掉以.开头的文件或目录'''
                     s_file = path.join(path_name, name)  # 源文件全路径 
                     d_file = s_file.replace(source_path, destination_path, 1)  # 目标端全路径
                     chk_r_path_result = check_remote_path(s_file)
@@ -288,13 +293,14 @@ def sftp_transfer(source_path, destination_path, method):
             process_sftp_dir(source_path)
 
         else:
-            print('%s%s is not exist' % (' ' * 8, source_path))
+            print_color('%s%s is not exist' % (' ' * 8, source_path))
             exit(10)
     client.close()
 
 if __name__ == "__main__":
     arguments = docopt(__doc__)
-    #print(arguments)
+    # print(arguments)
+    # exit(200)
     try:
         for server_name, server_ip, port in get_ip_port(arguments['--server']):  # 循环处理每个主机
             print('\n--------%s' % server_name)
@@ -308,4 +314,4 @@ if __name__ == "__main__":
             elif arguments['get']:
                 sftp_transfer(arguments['<src>'], arguments['<dst>'], 'get')
     except KeyboardInterrupt:
-        print('\n-----bye-----')    
+        print_color('\n-----bye-----')    
