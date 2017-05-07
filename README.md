@@ -53,7 +53,7 @@ Options:
 ```
 **批量执行远程命令:**
 ```
-shells]# auto_task -uroot -uroot cmd "echo 123" target web  #web is a group contains: web1 and web2
+shells]# auto_task -uroot -uroot cmd "echo 123" target web  ## web is a group contains: web1 and web2
 
 --------web1
         ----result:
@@ -83,7 +83,7 @@ shells]# auto_task -uroot --server name-ip-port.txt put /tmp/ljkapi /tmp/ljkapi 
 ```
 **下载**
 ```
-shells]# auto_task -uroot --server name-ip-port.txt get /tmp/ljkapi /tmp/kkk target web1  #下载应该只指定一个远程主机
+shells]# auto_task -uroot --server name-ip-port.txt get /tmp/ljkapi /tmp/kkk target web1  ## 下载应该只指定一个远程主机
 
 --------web1
     ----Downloading /tmp/ljkapi TO /tmp/kkk
