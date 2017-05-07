@@ -7,6 +7,7 @@
 
 #### 经过数次修改，现在主要功能包括：
 - 可批量执行远程命令，上传下载文件
+- 基于yaml的配置文件，实现灵活的对主机或主机组的操作
 - 支持多线程并发执行（对于某些耗时的命令或上传文件，可大大减少等待时间）
 - 严格模式（批量执行中若某一台server执行错误则退出）和非严格模式
 - 上传下载文件实现了类似rsync的机制
@@ -14,8 +15,8 @@
 - 跨平台，Linux和Windows均可
 
 #### 大致设计和实现思路如下：
-- 外部包依赖docopt和paramiko
-- 有一个server信息文件，内容格式为 ： “主机名-IP:端口”。脚本读取此文件来决定要对哪些server进行操作（该文件内部支持#注释掉某些server）
+- 外部包依赖docopt，paramiko，pyyaml
+- 将主机组以及主机(name:ip:port)信息写进yaml配置文件，以便灵活选取操作目标
 - 采用了docopt提供命令行界面
 - paramiko模块实现远程命令和sftp客户端功能。这里paramiko的sftp实例其只包含了基本的单个文件传输功能；并且不保存文件相关时间信息。
 - paramiko 通过sftp实例传输文件环节，这里额外实现“保持文件时间信息”和“实现目录传输”以及“实现类似rsync的传输机制”是要考虑很多问题和逻辑的。传输机制模仿rsync的默认机制，检查文件的mtime和size，有差异才会真正传输。
@@ -28,54 +29,52 @@
 ```
 shells]# auto_task --help
 Usage:
-  auto_task [options] cmd <command> [--skip-err] [--parallel]
-  auto_task [options] put <src> <dst> [--parallel]
-  auto_task [options] get <src> <dst>
-
+  auto_task [options] cmd <command> [--skip-err] [--parallel] target <targets>...
+  auto_task [options] put <src> <dst> [--parallel] target <targets>...
+  auto_task [options] get <src> <dst> target <targets>
 
 Options:
   -h --help             Show this screen.
+  -c <config>           YAML file include the remote server's information [default: /root/shells/auto_task.yaml]
   -u <user>             Remote username [default: root]
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: /root/.ssh/id_rsa]
-  --server <server_info_file>  
-                        File include the remote server's information,
-                        With the format of 'name-ip:port', such as 'web1-192.168.1.100:22',one server one line.
-  --skip-err            Use with cmd, if sikp any server's error and continue process the other servers [default: False].
+  --skip-err            Use with cmd, if skip any server's error and continue process the other servers [default: False].
   --parallel            Parallel execution, only use with cmd or put. This option implies the --skip-err [default: False].
 
   cmd                   Run command on remote server(s),multiple commands sperate by ';'
   put                   Transfer from local to remote. Transport mechanism similar to rsync.
   get                   Transfer from remote to local. Transport mechanism similar to rsync.
+  target                Which host(s) or group(s) you want to process,
 
-  Notice:       cmd, get, put can only use one at once
-  For Windows:  always use double quotes for quote something;
-                it's highly recommend that with get or put in Windows,always use '/' instead of '\'
+  Notice:       cmd, get, put can only use one at once.
+  For Windows:  Always use double quotes for quote something;
+                It's highly recommend that with get or put in Windows,always use '/' instead of '\'
 ```
 **批量执行远程命令:**
 ```
-shells]# auto_task -uroot --server name-ip-port.txt cmd "echo 123"
+shells]# auto_task -uroot -uroot cmd "echo 123" target web  #web is a group contains: web1 and web2
 
---------web13
+--------web1
         ----result:
             123
 
---------web14
+--------web2
         ----result:
             123
 ```
 **上传:**
 ```
-shells]# auto_task -uroot --server name-ip-port.txt put /tmp/ljkapi /tmp/ljkapi
+shells]# auto_task -uroot --server name-ip-port.txt put /tmp/ljkapi /tmp/ljkapi target web1 web2
 
---------web13
+--------web1
     ----Uploading /tmp/ljkapi TO /tmp/ljkapi
         ----Create Remote Dir: /tmp/ljkapi
             /tmp/ljkapi/date.txt
         ----Create Remote Dir: /tmp/ljkapi/api
             /tmp/ljkapi/api/demo.tmp
 
---------web14
+--------web2
     ----Uploading /tmp/ljkapi TO /tmp/ljkapi
         ----Create Remote Dir: /tmp/ljkapi
             /tmp/ljkapi/date.txt
@@ -84,9 +83,9 @@ shells]# auto_task -uroot --server name-ip-port.txt put /tmp/ljkapi /tmp/ljkapi
 ```
 **下载**
 ```
-shells]# auto_task -uroot --server name-ip-port.txt get /tmp/ljkapi /tmp/kkk
+shells]# auto_task -uroot --server name-ip-port.txt get /tmp/ljkapi /tmp/kkk target web1  #下载应该只指定一个远程主机
 
---------web13
+--------web1
     ----Downloading /tmp/ljkapi TO /tmp/kkk
         ----Create Local Dir: /tmp/kkk/
             /tmp/ljkapi/date.txt
