@@ -1,30 +1,29 @@
-#!/bin/env python3
+#!/bin/env python
 # coding:utf-8
 """
 Usage:
-  auto_task [options] cmd <command> [--skip-err] [--parallel]
-  auto_task [options] put <src> <dst> [--parallel]
-  auto_task [options] get <src> <dst>
+  auto_task [options] cmd <command> [--skip-err] [--parallel] target <targets>...
+  auto_task [options] put <src> <dst> [--parallel] target <targets>...
+  auto_task [options] get <src> <dst> target <targets>...
 
 
 Options:
   -h --help             Show this screen.
+  -c <config>           YAML file include the remote server's information [default: /root/shells/auto_task.yaml]
   -u <user>             Remote username [default: root]
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: /root/.ssh/id_rsa]
-  --server <server_info_file>  
-                        File include the remote server's information,
-                        With the format of 'name-ip:port', such as 'web1-192.168.1.100:22',one server one line.
   --skip-err            Use with cmd, if sikp any server's error and continue process the other servers [default: False].
   --parallel            Parallel execution, only use with cmd or put. This option implies the --skip-err [default: False].
 
   cmd                   Run command on remote server(s),multiple commands sperate by ';'
   put                   Transfer from local to remote. Transport mechanism similar to rsync.
   get                   Transfer from remote to local. Transport mechanism similar to rsync.
+  target                Which host(s) or group(s) you want to process,
 
-  Notice:       cmd, get, put can only use one at once
-  For Windows:  always use double quotes for quote something;
-                it's highly recommend that with get or put in Windows,always use '/' instead of '\\'
+  Notice:       cmd, get, put can only use one at once.
+  For Windows:  Always use double quotes for quote something;
+                It's highly recommend that with get or put in Windows,always use '/' instead of '\\'
 """
 
 """
@@ -32,6 +31,7 @@ by ljk 20160704
 update at 20170111
 """
 from docopt import docopt
+import yaml
 from paramiko import SSHClient, AutoAddPolicy
 from os import path, walk, makedirs, stat, utime
 from re import split, match, search
@@ -39,13 +39,13 @@ from sys import exit, stdout
 import platform
 from math import floor
 import threading
+import signal
 
 """
 因为涉及了(多)线程，所以我们将串行也归为单线程，这样可以统一用线程的一些思路，而不必编写一套多线程模型一套串行模型。
 也因为多线程，所以输出用print()的话，各server的输出会对不上号，所以引入了OutputText类，将每个server的输出统一保存起来，最后打印出来
 但是这样依然无法避免多个线程同时完成了，同时打印各自的最终结果。也就是说多线程任务最终需要输出时，输出这个动作必须要串行
 """
-
 
 class OutputText:
     """该类的对象具有write()方法，用来存储每台server的执行结果.
@@ -84,22 +84,33 @@ def print_color(text, color=31, sep=' ', end='\n', file=stdout, flush=False):
         print('\033[0m', end='')
 
 
-def get_ip_port(fname):
-    """从制定文件(特定格式)中，取得主机名/主机ip/端口
-    output:存储输出的对象"""
-    try:
-        with open(fname, 'r') as fobj:
-            for line in fobj.readlines():
-                if line != '\n' and not match('#', line):  # 过滤空行和注释行
-                    list_tmp = split('[-:]', line)
-                    server_name = list_tmp[0]
-                    server_ip = list_tmp[1]
-                    port = int(list_tmp[2])
-                    yield (server_name, server_ip, port)
-    except Exception as err:
-        print_color('{}\n'.format(err))
-        exit(10)
-
+def get_ip_port(conf_dict,target):
+    """从配置文件中,取得要处理的host(s)/group(s)的主机名,主机ip,端口
+    conf_dict: 对yaml配置文件的解析结果
+    target: (list类型)待处理目标,值为 all 或 host(s)/group(s)"""
+    if len(target) == 1 and target[0] == 'all':
+        for v in conf_dict.values():
+            for single_server in v:
+                yield(single_server.split(':'))
+    else:
+        break_flag = False  # 用来支持多层for循环的正确break
+        for a in target:
+            if a in conf_dict.keys():
+                for single_server in conf_dict[a]:
+                    yield(single_server.split(':'))
+            else:
+                for v in conf_dict.values():
+                    if v:
+                        for single_server in v:
+                            if a in single_server:
+                                yield(single_server.split(':'))
+                                break_flag = True
+                                break
+                            else:
+                                break_flag = False
+                                continue
+                    if break_flag:
+                        break
 
 def create_sshclient(server_ip, port, output):
     """根据命令行提供的参数，建立到远程server的ssh链接.这段本应在run_command()函数内部。
@@ -109,7 +120,7 @@ def create_sshclient(server_ip, port, output):
     local_client.client = SSHClient()
     local_client.client.set_missing_host_key_policy(AutoAddPolicy())
     try:
-        local_client.client.connect(server_ip, port=port, username=arguments['-u'], password=arguments['-p'], key_filename=arguments['--pkey'])
+        local_client.client.connect(server_ip, port=int(port), username=arguments['-u'], password=arguments['-p'], key_filename=arguments['--pkey'])
     except Exception as err:  # 有异常，打印异常，并返回'error'
         output.write('{}----{} ssh connect error: {}\n'.format(' ' * 4, server_ip, err), color=31)
         return 'error'
@@ -132,22 +143,22 @@ def run_command(client, output):
     stdin, stdout, stderr = client.exec_command(arguments['<command>'])
     copy_out, copy_err = stdout.readlines(), stderr.readlines()
     if len(copy_out) and len(copy_err):
-        output.write('%s----result:\n' % (' ' * 8))
+        output.write('%s----result:\n' % (' ' * 4))
         for i in copy_out:
-            output.write('%s%s' % (' ' * 12, i))
+            output.write('%s%s' % (' ' * 8, i))
         for i in copy_err:
-            output.write('%s%s' % (' ' * 12, i), color=31)
+            output.write('%s%s' % (' ' * 8, i), color=31)
         if not arguments['--skip-err']:    # 忽略命令执行错误的情况
             output.print_lock()
             exit(10)
     elif len(copy_out):
-        output.write('%s----result:\n' % (' ' * 8))
+        output.write('%s----result:\n' % (' ' * 4))
         for i in copy_out:
-            output.write('%s%s' % (' ' * 12, i))
+            output.write('%s%s' % (' ' * 8, i))
     elif len(copy_err):
-        output.write('%s----error:\n' % (' ' * 8), color=31)
+        output.write('%s----error:\n' % (' ' * 4), color=31)
         for i in copy_err:
-            output.write('%s%s' % (' ' * 12, i), color=31)
+            output.write('%s%s' % (' ' * 8, i), color=31)
         if not arguments['--skip-err']:
             client.close()
             output.print_lock()
@@ -374,7 +385,7 @@ def process_single_server(server_name, server_ip, port):
     """处理一台server的逻辑"""
     local_data = threading.local()  # 可以看到多线程情况下，确实是不同的OutputText实例，说明threading.local()起到了预期作用
     local_data.output = OutputText()
-    local_data.output.write('\n--------{}\n'.format(server_name))  # 这行写入的数据可以在多线程环境下正常打出
+    local_data.output.write('\n----{}\n'.format(server_name))  # 这行写入的数据可以在多线程环境下正常打出
     client = create_sshclient(server_ip, port, local_data.output)
     if client == 'error':
         if not arguments['--skip-err']:
@@ -395,17 +406,19 @@ def process_single_server(server_name, server_ip, port):
 if __name__ == "__main__":
     global global_lock
     global_lock = threading.Lock()
-    arguments = docopt(__doc__)
     try:
-        if not arguments['--parallel']:
-            for server_name, server_ip, port in get_ip_port(arguments['--server']):
-                '''循环处理每个主机'''
-                process_single_server(server_name, server_ip, port)
-        else:
-            for server_name, server_ip, port in get_ip_port(arguments['--server']):
-                # executor.submit(process_single_server, server_name, server_ip, port)
-                t = threading.Thread(target=process_single_server, args=(server_name, server_ip, port))
-                t.start()
-                # t.join()  # 谁对t线程发起join，谁就阻塞直到t线程执行完
+        arguments = docopt(__doc__)
+        conf_dict = yaml.load(open(arguments['-c']))
+
+        for server_name, server_ip, port in get_ip_port(conf_dict, arguments['<targets>']):
+            '''循环处理每个主机'''
+            t = threading.Thread(target=process_single_server, args=(server_name, server_ip, port))
+            t.start()
+            if not arguments['--parallel']:
+                t.join()  # 谁对t线程发起join，谁就阻塞直到t线程执行完
     except KeyboardInterrupt:
-        print_color('\n-----bye-----')    
+        print_color('\n----bye----')
+        exit(-10)
+    except Exception as err:
+        print(err)
+        exit(10)  
