@@ -1,0 +1,7 @@
+#This file contain groups and hosts information. Below is a simple example.
+web:
+    - web1:1.1.1.1:22
+    - web2:2.2.2.2:22
+db:
+    - db1:3.3.3.3:22
+    - db2:4.4.4.4:22
