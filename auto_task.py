@@ -9,7 +9,7 @@ Usage:
 
 Options:
   -h --help             Show this screen.
-  -c <config>           YAML file include the remote server's information [default: /root/shells/auto_task.yaml]
+  -c <config>           YAML file include the remote server's information [default: /root/shells/auto_task.yml]
   -u <user>             Remote username [default: root]
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: /root/.ssh/id_rsa]
@@ -34,23 +34,23 @@ from docopt import docopt
 import yaml
 from paramiko import SSHClient, AutoAddPolicy
 from os import path, walk, makedirs, stat, utime
-from re import split, match, search
+from re import search
 from sys import exit, stdout
 import platform
 from math import floor
 import threading
-import signal
 
 """
-因为涉及了(多)线程，所以我们将串行也归为单线程，这样可以统一用线程的一些思路，而不必编写一套多线程模型一套串行模型。
-也因为多线程，所以输出用print()的话，各server的输出会对不上号，所以引入了OutputText类，将每个server的输出统一保存起来，最后打印出来
-但是这样依然无法避免多个线程同时完成了，同时打印各自的最终结果。也就是说多线程任务最终需要输出时，输出这个动作必须要串行
+因为涉及了(多)线程,所以我们将串行也归为单线程,这样可以统一用线程的一些思路,而不必编写一套多线程模型一套串行模型。
+也因为多线程,所以输出用print()的话,各server的输出会对不上号,所以引入了OutputText类,将每个server的输出统一保存起来,最后打印出来
+但是这样依然无法避免多个线程同时完成了,同时打印各自的最终结果。也就是说多线程任务最终需要输出时,输出这个动作必须要串行
 """
+
 
 class OutputText:
-    """该类的对象具有write()方法，用来存储每台server的执行结果.
-    因为引入了多线程异步执行才需要这么做，以保证异步执行多台server的输出不会乱.
-    为了简洁，并行与串行的输出就都用这一套东西了"""
+    """该类的对象具有write()方法,用来存储每台server的执行结果.
+    因为引入了多线程异步执行才需要这么做,以保证异步执行多台server的输出不会乱.
+    为了简洁,并行与串行的输出就都用这一套东西了"""
     def __init__(self):
         self.buffer = []
 
@@ -66,7 +66,8 @@ class OutputText:
             self.buffer.extend(args)
 
     def print_lock(self):
-        """并发模式下，所有的输出动作都要加锁"""
+        global global_lock
+        """并发模式下,所有的输出动作都要加锁"""
         global_lock.acquire()
         for line in self.buffer:
             print(line, end='')
@@ -112,16 +113,18 @@ def get_ip_port(conf_dict,target):
                     if break_flag:
                         break
 
+
 def create_sshclient(server_ip, port, output):
-    """根据命令行提供的参数，建立到远程server的ssh链接.这段本应在run_command()函数内部。
-    摘出来的目的是为了让sftp功能也通过sshclient对象来创建sftp对象，因为初步观察t.connect()方法在使用key时有问题
+    """根据命令行提供的参数,建立到远程server的ssh链接.这段本应在run_command()函数内部。
+    摘出来的目的是为了让sftp功能也通过sshclient对象来创建sftp对象,因为初步观察t.connect()方法在使用key时有问题
     output:存储输出的对象"""
     local_client = threading.local()  # 多线程中每个线程要在函数内某些保持自己特定值
     local_client.client = SSHClient()
     local_client.client.set_missing_host_key_policy(AutoAddPolicy())
     try:
+        # client.connect()方法额外单独外创建一个线程
         local_client.client.connect(server_ip, port=int(port), username=arguments['-u'], password=arguments['-p'], key_filename=arguments['--pkey'])
-    except Exception as err:  # 有异常，打印异常，并返回'error'
+    except Exception as err:  # 有异常,打印异常,并返回'error'
         output.write('{}----{} ssh connect error: {}\n'.format(' ' * 4, server_ip, err), color=31)
         return 'error'
     else:
@@ -137,9 +140,9 @@ def run_command(client, output):
     client: paramiko.client.SSHClient object
     output: 存储输出的对象
     """
-    # stdout 假如通过分号提供单行的多条命令，所有命令的输出（在linux终端会输出的内容）都会存储于stdout
-    # 据观察，下面三个变量的特点是无论"如何引用过一次"之后，其内容就会清空
-    # 有readlines()的地方都是流，用过之后就没有了
+    # stdout 假如通过分号提供单行的多条命令,所有命令的输出（在linux终端会输出的内容）都会存储于stdout
+    # 据观察,下面三个变量的特点是无论"如何引用过一次"之后,其内容就会清空
+    # 有readlines()的地方都是流,用过之后就没有了
     stdin, stdout, stderr = client.exec_command(arguments['<command>'])
     copy_out, copy_err = stdout.readlines(), stderr.readlines()
     if len(copy_out) and len(copy_err):
@@ -172,7 +175,7 @@ def run_command(client, output):
 def sftp_transfer(source_path, destination_path, method, client, output):
     """
     文件传输的 主函数
-    paramiko的sftp client传输，只能单个文件作为参数，并且不会保留文件的时间信息，这两点都需要代码里额外处理
+    paramiko的sftp client传输,只能单个文件作为参数,并且不会保留文件的时间信息,这两点都需要代码里额外处理
     client: paramiko.client.SSHClient object
     output:存储输出的对象
     """
@@ -187,13 +190,13 @@ def sftp_transfer(source_path, destination_path, method, client, output):
 
     # -----下面定义sftp_transfer()函数所需的一些子函数-----
     def process_arg_dir(target):
-        """处理目录时，检查用户输入，在路径后面加上/"""
+        """处理目录时,检查用户输入,在路径后面加上/"""
         if not target.endswith('/'):
             target = target + '/'
         return target
 
     def sftp_put(src, dst, space):
-        """封装put，增加相应输出，并依据m_time和size判断两端文件一致性，决定是否传输该文件"""
+        """封装put,增加相应输出,并依据m_time和size判断两端文件一致性,决定是否传输该文件"""
         if check_remote_path(dst) == 'file':
             src_stat = stat(src)
             dst_stat = sftp.stat(dst)
@@ -212,7 +215,7 @@ def sftp_transfer(source_path, destination_path, method, client, output):
                 exit(10)
 
     def sftp_get(src, dst, space):
-        """封装get，增加相应输出，并依据m_time和size判断两端文件一致性，决定是否传输该文件"""
+        """封装get,增加相应输出,并依据m_time和size判断两端文件一致性,决定是否传输该文件"""
         if path.isfile(dst):
             src_stat = sftp.stat(src)
             dst_stat = stat(dst)
@@ -232,7 +235,7 @@ def sftp_transfer(source_path, destination_path, method, client, output):
 
     def sftp_transfer_rcmd(cmd=None, space=None):
         """
-        在文件传输功能中，有些时候需要在远程执行一些命令来获取某些信息
+        在文件传输功能中,有些时候需要在远程执行一些命令来获取某些信息
         client: paramiko.client.SSHClient object
         output:存储输出的对象
         """
@@ -247,8 +250,16 @@ def sftp_transfer(source_path, destination_path, method, client, output):
             return copy_out
 
     def check_remote_path(r_path):
-        """通过client对象在远程linux执行命令，来判断远程路径是否存在，是文件还是目录"""
-        check_cmd = 'if [ -e {0} ];then if [ -d {0} ];then echo directory;elif [ -f {0} ];then echo file;fi;else echo no_exist;fi'.format(r_path)
+        """通过client对象在远程linux执行命令,来判断远程路径是否存在,是文件还是目录"""
+        check_cmd = "if [ -e {0} ];then" \
+                    "  if [ -d {0} ];then" \
+                    "    echo directory;" \
+                    "  elif [ -f {0} ];then" \
+                    "    echo file;" \
+                    "  fi;" \
+                    "else" \
+                    "  echo no_exist;" \
+                    "fi".format(r_path)
         # check_cmd命令会有三种‘正常输出’directory  file  no_exist
         check_result = sftp_transfer_rcmd(cmd=check_cmd)[0].strip('\n')
         if check_result == 'directory':
@@ -383,7 +394,7 @@ def sftp_transfer(source_path, destination_path, method, client, output):
 
 def process_single_server(server_name, server_ip, port):
     """处理一台server的逻辑"""
-    local_data = threading.local()  # 可以看到多线程情况下，确实是不同的OutputText实例，说明threading.local()起到了预期作用
+    local_data = threading.local()  # 可以看到多线程情况下,确实是不同的OutputText实例,说明threading.local()起到了预期作用
     local_data.output = OutputText()
     local_data.output.write('\n----{}\n'.format(server_name))  # 这行写入的数据可以在多线程环境下正常打出
     client = create_sshclient(server_ip, port, local_data.output)
@@ -399,26 +410,29 @@ def process_single_server(server_name, server_ip, port):
         sftp_transfer(arguments['<src>'], arguments['<dst>'], 'put', client, local_data.output)
     elif arguments['get']:
         sftp_transfer(arguments['<src>'], arguments['<dst>'], 'get', client, local_data.output)
-    # 前面的逻辑可以并行，打印必须要加锁实现串行
+    # 前面的逻辑可以并行,打印必须要加锁实现串行
     local_data.output.print_lock()
 
 
 if __name__ == "__main__":
-    global global_lock
     global_lock = threading.Lock()
     try:
         arguments = docopt(__doc__)
         conf_dict = yaml.load(open(arguments['-c']))
-
+        threads_list = []
         for server_name, server_ip, port in get_ip_port(conf_dict, arguments['<targets>']):
             '''循环处理每个主机'''
-            t = threading.Thread(target=process_single_server, args=(server_name, server_ip, port))
+            t = threading.Thread(target=process_single_server, args=(server_name, server_ip, port), daemon=True)
             t.start()
             if not arguments['--parallel']:
-                t.join()  # 谁对t线程发起join，谁就阻塞直到t线程执行完
+                t.join()  # (串行)谁对t线程发起join,谁就阻塞直到t线程执行完
+            threads_list.append(t)  # 按顺序进队
+        for t in threads_list:
+            t.join()  # 在这里join(),程序依然是并行
     except KeyboardInterrupt:
+        '''多线程环境下,thread对象要设置daemon=True同时要有join()操作,才能优雅的捕捉并处理'''
         print_color('\n----bye----')
         exit(-10)
     except Exception as err:
         print(err)
-        exit(10)  
+        exit(10)
