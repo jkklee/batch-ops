@@ -1,7 +1,13 @@
-#This file contain groups and hosts information. Below is a simple example.
+# Below is a simple example, contain host groups. You can specific a group name in the Cli to represent all hosts in this group.
+# Also a special "all" will represent all groups/hosts.
 web:
     - web1:1.1.1.1:22
     - web2:2.2.2.2:22
 db:
     - db1:3.3.3.3:22
     - db2:4.4.4.4:22
+    
+# Below is another example which not groups(only every hosts).
+# Note: this tow example can't appear at the same time.
+#- cache1:3.3.3.3:22
+#- cache2:4.4.4.4:22
