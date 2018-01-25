@@ -132,23 +132,24 @@ class AutoTask:
             copy_out, copy_err = stdout_.readlines(), stderr_.readlines()
             copy_out_ = ('%s%s' % (' ' * INDENT_3, i) for i in copy_out)
             copy_err_ = ('%s%s' % (' ' * INDENT_3, i) for i in copy_err)
+            del stdout_, stderr_
             if copy_out and copy_err:
-                del copy_out, copy_err
                 self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
                 self.output.write_or_print(*copy_out_)
                 self.output.write_or_print(*copy_err_, color=31)
                 self.output.print_lock()
             elif copy_out:
-                del copy_out, copy_err
                 self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
                 self.output.write_or_print(*copy_out_)
                 self.output.print_lock()
             elif copy_err:
-                del copy_out, copy_err
                 self.output.write_or_print('%s----error:\n' % (' ' * INDENT_2), color=31)
                 self.output.write_or_print(*copy_err_, color=31)
                 self.output.print_lock()
                 event.set()
+            else:  # 既无stdout也无stderr,例如nginx -s reload
+                self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
+                self.output.print_lock()
 
     # 先定义sftp_transfer()函数所需的一些子函数
     @staticmethod
