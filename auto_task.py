@@ -2,7 +2,7 @@
 # coding:utf-8
 """
 Usage:
-  auto_task [options] cmd <command> [--parallel] target <targets>...
+  auto_task [options] cmd <command> [--parallel][--skip-err] target <targets>...
   auto_task [options] put <src> <dst> [--parallel] target <targets>...
   auto_task [options] get <src> <dst> target <targets>...
 
@@ -14,6 +14,7 @@ Options:
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: ~/.ssh/id_rsa]
   --parallel            Parallel execution, only use with 'cmd' or 'put' [default: False].
+  --skip-err            When remote command encounter errors on some servers, continue run on remainder servers [default: False]
 
   cmd                   Run command on remote server(s),multiple commands sperate by ';'
   put                   Transfer from local to remote. Transport mechanism similar to rsync.
@@ -146,7 +147,8 @@ class AutoTask:
                 self.output.write_or_print('%s----error:\n' % (' ' * INDENT_2), color=31)
                 self.output.write_or_print(*copy_err_, color=31)
                 self.output.print_lock()
-                event.set()
+                if not arguments['--skip-err']:
+                    event.set()
             else:  # 既无stdout也无stderr,例如nginx -s reload
                 self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
                 self.output.print_lock()
