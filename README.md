@@ -45,7 +45,7 @@ Options:
 ```
 **批量执行远程命令:**
 ```
-shells]# auto_task -uroot -uroot cmd "echo 123" target web  ## web is a group contains: web1 and web2
+shells]# auto_task -uroot cmd "echo 123" target web  ## web is a group contains: web1 and web2
 
 ----web1
     ----result:
