@@ -8,18 +8,18 @@ Usage:
 
 
 Options:
-  -h --help             Show this screen.
+  -h --help             Show this screen
   -c <config>           YAML file include the remote server's information [default: /root/shells/auto_task.yml]
   -u <user>             Remote username [default: root]
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: ~/.ssh/id_rsa]
-  --parallel            Parallel execution, only use with 'cmd' or 'put' [default: False].
+  --parallel            Parallel execution, only use with 'cmd' or 'put' [default: False]
   --skip-err            When remote command encounter errors on some servers, continue run on remainder servers [default: False]
 
   cmd                   Run command on remote server(s),multiple commands sperate by ';'
-  put                   Transfer from local to remote. Transport mechanism similar to rsync.
-  get                   Transfer from remote to local. Transport mechanism similar to rsync.
-  target                Which host(s) or group(s) you want to process,
+  put                   Transfer from local to remote. Transport mechanism similar to rsync
+  get                   Transfer from remote to local. Transport mechanism similar to rsync
+  target                Which host(s) or group(s) you want to process
 
   Notice:       cmd, get, put can only use one at once.
   For Windows:  Always use double quotes for quote something;
