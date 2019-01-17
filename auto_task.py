@@ -14,7 +14,7 @@ Options:
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: ~/.ssh/id_rsa]
   --parallel            Parallel execution, only use with 'cmd' or 'put' [default: False]
-  --skip-err            When remote command encounter errors on some servers, continue run on remainder servers [default: False]
+  --skip-err            When remote command encounter errors on some servers, continue run on remainder [default: False]
 
   cmd                   Run command on remote server(s),multiple commands sperate by ';'
   put                   Transfer from local to remote. Transport mechanism similar to rsync
@@ -452,8 +452,9 @@ def main():
     arguments = docopt(__doc__)
     if arguments['--pkey'] == '~/.ssh/id_rsa':
         arguments['--pkey'] = os.path.join(os.path.expanduser('~'), '.ssh/id_rsa')
-    for hostname, ip, port in get_host_info(arguments['<targets>']):
+    for hostname, ip_port in get_host_info(arguments['<targets>']):
         '''循环处理每个主机'''
+        ip, port = ip_port.split(':')
         if event.is_set():
             break
         auto_task = AutoTask(hostname, ip, port)
