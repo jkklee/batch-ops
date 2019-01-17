@@ -411,11 +411,30 @@ class AutoTask:
                     self.output.print_lock()
                     event.set()
                     exit()
-                        
 
+
+def get_keys(keys, dic=None, ret=None):
+    """
+    从长度和结构未知的字典对象中取出指定key的值(若key的值为字典，则递归展示其最小粒度的键值对)
+    keys: 可迭代容器,元素为要获取值的键
+    dic: 字典对象
+    ret: 一个外部的空列表, 用来存储得到的 k v 信息
+    """
+    for key in keys:
+        if key in dic:
+            if isinstance(dic[key], dict):
+                get_keys(dic[key].keys(), dic=dic[key], ret=ret)
+            else:
+                ret.append((key,dic[key]))
+        else:
+            for inner in dic:
+                if isinstance(dic[inner], dict):
+                    get_keys([key], dic=dic[inner], ret=ret)                    
+
+                    
 def get_host_info(targets):
     """从配置文件中,取得要处理的host(s)/group(s)的主机名,主机ip,端口
-    targets: 待处理目标(list类型),值为 all(特殊值,代表所有) 或 host(s)/group(s)"""
+    targets: 待处理目标(list类型),值为 all(代表所有) 或 host(s)/group(s)"""
     try:
         with open(arguments['-c']) as conf_content:
             conf = yaml.load(conf_content)
@@ -424,38 +443,9 @@ def get_host_info(targets):
         exit(10)
     if arguments['get']:
         targets = [targets[0]]
-    if len(targets) == 1 and targets[0] == 'all':
-        if isinstance(conf, list):
-            for single_server in conf:
-                yield single_server.split(':')
-        if isinstance(conf, dict):
-            for v in conf.values():
-                for single_server in v:
-                    yield single_server.split(':')
-
-    if isinstance(conf, list):
-        for t in targets:
-            for single_server in conf:
-                if t in single_server.split(':'):
-                    yield single_server.split(':')
-    if isinstance(conf, dict):
-        break_flag = False  # 用来支持多层for循环的正确break
-        for t in targets:
-            if t in conf:  # targets为group(s)时
-                for single_server in conf[t]:
-                    yield single_server.split(':')
-            else:    # targets为host(s)时
-                for v in conf.values():
-                    for single_server in v:
-                        if t in single_server.split(':'):
-                            yield single_server.split(':')
-                            break_flag = True
-                            break
-                        else:
-                            continue
-                    if break_flag:
-                        break_flag = False
-                        break
+    info = []
+    get_keys(targets, dic=conf, ret=info)
+    return info
 
 def main():
     global arguments
