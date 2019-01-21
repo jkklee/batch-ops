@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/usr/bin/env python3
 # coding:utf-8
 """
 Usage:
@@ -14,7 +14,7 @@ Options:
   -p <password>         User's password
   --pkey <private-key>  Local private key [default: ~/.ssh/id_rsa]
   --parallel            Parallel execution, only use with 'cmd' or 'put' [default: False]
-  --skip-err            When remote command encounter errors on some servers, continue run on remainder [default: False]
+  --skip-err            When remote command encounter errors on some server(s), continue run on remainder [default: False]
 
   cmd                   Run command on remote server(s),multiple commands sperate by ';'
   put                   Transfer from local to remote. Transport mechanism similar to rsync
@@ -418,14 +418,14 @@ def get_keys(keys, dic=None, ret=None):
     从长度和结构未知的字典对象中取出指定key的值(若key的值为字典，则递归展示其最小粒度的键值对)
     keys: 可迭代容器,元素为要获取值的键
     dic: 字典对象
-    ret: 一个外部的空列表, 用来存储得到的 k v 信息
+    ret: 一个外部的空集合, 用来存储得到的 k v 信息
     """
     for key in keys:
         if key in dic:
             if isinstance(dic[key], dict):
                 get_keys(dic[key].keys(), dic=dic[key], ret=ret)
             else:
-                ret.append((key,dic[key]))
+                ret.add((key, dic[key]))
         else:
             for inner in dic:
                 if isinstance(dic[inner], dict):
@@ -443,9 +443,10 @@ def get_host_info(targets):
         exit(10)
     if arguments['get']:
         targets = [targets[0]]
-    info = []
+    info = set()
     get_keys(targets, dic=conf, ret=info)
     return info
+
 
 def main():
     global arguments
