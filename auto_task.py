@@ -34,6 +34,7 @@ import os
 import yaml
 import stat
 import threading
+import socket
 from docopt import docopt
 from platform import uname
 from sys import exit, stdout
@@ -47,9 +48,9 @@ from paramiko import SSHClient, AutoAddPolicy
 global_lock = threading.Lock()
 computer = uname().system
 event = threading.Event()
-INDENT_1 = 0
-INDENT_2 = 4
-INDENT_3 = 8
+INDENT_1 = 0 * ' '
+INDENT_2 = 4 * ' '
+INDENT_3 = 8 * ' '
 
 
 class OutputText:
@@ -70,11 +71,10 @@ class OutputText:
             else:
                 self.buffer.extend(args)
         else:
-            if color and not computer == 'Windows':
-                for string in args:
+            for string in args:
+                if color and not computer == 'Windows':
                     self.print_color(string, color=color, end='')
-            else:
-                for string in args:
+                else:
                     print(string, end='')
 
     def print_lock(self):
@@ -105,17 +105,21 @@ class AutoTask:
         self.client.set_missing_host_key_policy(AutoAddPolicy())
         self.output = OutputText()
         self.sftp = None
-        self.output.write_or_print('\n----{}\n'.format(hostname))
+        self.output.write_or_print('\n{}----{}\n'.format(INDENT_1, hostname), color=33)
 
     def create_sshclient(self):
         """根据命令行提供的参数,建立到远程server的ssh链接.这段本应在run_command()函数内部。
         摘出来的目的是为了让sftp功能也通过sshclient对象来创建sftp对象,因为初步观察t.connect()方法在使用key时有问题"""
         try:
             # client.connect()方法会调用Transport类额外创建一个daemon线程
-            self.client.connect(self.ip, port=self.port, username=arguments['-u'], password=arguments['-p'], key_filename=arguments['--pkey'])
+            self.client.connect(self.ip, port=self.port, username=arguments['-u'], password=arguments['-p'], key_filename=arguments['--pkey'], timeout=10)
             return True
+        except (TimeoutError, socket.timeout) as err:
+            self.output.write_or_print('{}SSH connect error: {}\n'.format(INDENT_2, err), color=31)
+            self.output.print_lock()
+            return 'continue'
         except Exception as err:  # 有异常,打印异常,并返回'error'
-            self.output.write_or_print('{}{} SSH connect error: {}\n'.format(' ' * INDENT_2, self.hostname, err), color=31)
+            self.output.write_or_print('{}SSH connect error: {}\n'.format(INDENT_2, err), color=31)
             self.output.print_lock()
             return False
 
@@ -131,26 +135,26 @@ class AutoTask:
         with self.client:
             _, stdout_, stderr_ = self.client.exec_command(cmd)
             copy_out, copy_err = stdout_.readlines(), stderr_.readlines()
-            copy_out_ = ('%s%s' % (' ' * INDENT_3, i) for i in copy_out)
-            copy_err_ = ('%s%s' % (' ' * INDENT_3, i) for i in copy_err)
+            copy_out_ = ('%s%s' % (INDENT_3, i) for i in copy_out)
+            copy_err_ = ('%s%s' % (INDENT_3, i) for i in copy_err)
             del stdout_, stderr_
             if copy_out and copy_err:
-                self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
+                self.output.write_or_print('%s----result:\n' % INDENT_2)
                 self.output.write_or_print(*copy_out_)
                 self.output.write_or_print(*copy_err_, color=31)
                 self.output.print_lock()
             elif copy_out:
-                self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
+                self.output.write_or_print('%s----result:\n' % INDENT_2)
                 self.output.write_or_print(*copy_out_)
                 self.output.print_lock()
             elif copy_err:
-                self.output.write_or_print('%s----error:\n' % (' ' * INDENT_2), color=31)
+                self.output.write_or_print('%s----error:\n' % INDENT_2, color=31)
                 self.output.write_or_print(*copy_err_, color=31)
                 self.output.print_lock()
                 if not arguments['--skip-err']:
                     event.set()
             else:  # 既无stdout也无stderr,例如nginx -s reload
-                self.output.write_or_print('%s----result:\n' % (' ' * INDENT_2))
+                self.output.write_or_print('%s----result:\n' % INDENT_2)
                 self.output.print_lock()
 
     # 先定义sftp_transfer()函数所需的一些子函数
@@ -171,10 +175,10 @@ class AutoTask:
                 self.sftp.put(src, dst)
                 self.sftp.utime(dst, (src_stat.st_atime, src_stat.st_mtime))    # 一次远非核心程调用
                 self.sftp.chmod(dst, src_stat.st_mode)  # 一次远非核心程调用
-                self.output.write_or_print('%s%s\n' % (' ' * INDENT_3, src))
+                self.output.write_or_print('%s%s\n' % (INDENT_3, src))
             except Exception as e:
                 if not if_raise:
-                    self.output.write_or_print('{}sftp.put({}, {}): {}\n'.format(' '*INDENT_3, src, dst, e), color=31)
+                    self.output.write_or_print('{}sftp.put({}, {}): {}\n'.format(INDENT_3, src, dst, e), color=31)
                     self.output.print_lock()
                     event.set()
                     exit()
@@ -190,10 +194,10 @@ class AutoTask:
                 self.sftp.get(src, dst)
                 os.utime(dst, (src_stat.st_atime, src_stat.st_mtime))
                 os.chmod(dst, src_stat.st_mode)
-                self.output.write_or_print('%s%s\n' % (' ' * INDENT_3, src))
+                self.output.write_or_print('%s%s\n' % (INDENT_3, src))
             except Exception as err:
                 if not if_raise:
-                    self.output.write_or_print('{}sftp.get({}, {}): {}\n'.format(' '*INDENT_3, src, dst, err), color=31)
+                    self.output.write_or_print('{}sftp.get({}, {}): {}\n'.format(INDENT_3, src, dst, err), color=31)
                     self.output.print_lock()
                     event.set()
                     exit()
@@ -256,7 +260,7 @@ class AutoTask:
             os.utime(dirname, (remote_stat.st_atime, remote_stat.st_mtime))
             os.chmod(dirname, remote_stat.st_mode)
         except Exception as e:
-            self.output.write_or_print('{}Error: os.mkdir({}): {}\n'.format(' '*INDENT_3, dirname, e), color=31)
+            self.output.write_or_print('{}Error: os.mkdir({}): {}\n'.format(INDENT_3, dirname, e), color=31)
             self.output.print_lock()
             event.set()
             exit()
@@ -282,7 +286,7 @@ class AutoTask:
             self.sftp.utime(dirname, (local_stat.st_atime, local_stat.st_mtime))    # 一次远非核心程调用
             self.sftp.chmod(dirname, local_stat.st_mode)    # 一次远非核心程调用
         except Exception as e:
-            self.output.write_or_print('{}Error: sftp.mkdir({}): {}\n'.format(' '*INDENT_3, dirname, e), color=31)
+            self.output.write_or_print('{}Error: sftp.mkdir({}): {}\n'.format(INDENT_3, dirname, e), color=31)
             self.output.print_lock()
             event.set()
             exit()
@@ -323,8 +327,8 @@ class AutoTask:
         """
         文件传输的 主函数
         paramiko的sftp client传输,只能单个文件作为参数,并且不会保留文件的时间信息,这两点都需要代码里额外处理
-        source: 原文件(为文件时); 原目录(为目录时,并且作为递归处理时的目录前缀)
-        destination: 目标文件(为文件时); 目标目录(为目录时, 并且作为递归处理时的目录前缀)
+        source: 源(为文件时); 源(为目录时,并且作为递归处理时的目录前缀)
+        destination: 目标(为文件时); 目标(为目录时, 并且作为递归处理时的目录前缀)
         client: paramiko.client.SSHClient object
         output:存储输出的对象
         """
@@ -332,7 +336,7 @@ class AutoTask:
             try:
                 self.sftp = self.client.open_sftp()
             except Exception as err:
-                self.output.write_or_print('%sopen_sftp error: %s\n' % (' '*INDENT_3, str(err)), color=31)
+                self.output.write_or_print('%sopen_sftp error: %s\n' % (INDENT_3, str(err)), color=31)
                 self.output.print_lock()
                 event.set()
                 exit()
@@ -351,7 +355,7 @@ class AutoTask:
                 以上三种会 raise `OSError: Failure`
                 `sftp.put(dir, file)`, `sftp.put(dir, file/dir)` raise `IsADirectoryError: [Errno 21] Is a directory: scr_dir`
                  '''
-                self.output.write_or_print('%s----Uploading %s TO %s\n' % (' '*INDENT_2, source_path, destination_path))
+                self.output.write_or_print('%s----Uploading %s TO %s\n' % (INDENT_2, source_path, destination_path))
                 source_type = self._check_path_type(source_path, 'local')
                 if source_type == 'file':
                     '''判断source_path是文件'''
@@ -360,7 +364,7 @@ class AutoTask:
                     dst_parent_type = self._check_path_type(os.path.dirname(destination_path), 'remote')    # 一次远非核心程调用
                     if dst_parent_type == 'file':
                         '''专门应对 file ----> file/ 这种情况,因为这种情况sftp对象会抛出 OSError(而非os模块抛出 FileExistsError),捕捉杀伤面太大'''
-                        self.output.write_or_print("{}Error: remote {} is file\n".format(' '*INDENT_3, os.path.dirname(destination_path)), color=31)
+                        self.output.write_or_print("{}Error: remote {} is file\n".format(INDENT_3, os.path.dirname(destination_path)), color=31)
                         self.output.print_lock()
                         event.set()
                         exit()
@@ -374,7 +378,7 @@ class AutoTask:
                     self._put_dirs(source_path, destination_path)
                     self.output.print_lock()
                 else:
-                    self.output.write_or_print('%sLocal %s is not exist\n' % (' '*INDENT_3, source_path), color=31)
+                    self.output.write_or_print('%sLocal %s is not exist\n' % (INDENT_3, source_path), color=31)
                     self.output.print_lock()
                     event.set()
                     exit()
@@ -384,7 +388,7 @@ class AutoTask:
                 '''异常情况: `get(file, dir)`, `get(dir, file/)` raise `IsADirectoryError: [Errno 21] Is a directory: dst_dir`
                 `get(dir, file)` raise `OSError: Failure`
                 '''
-                self.output.write_or_print('%s----Downloading %s TO %s\n' % (' '*INDENT_2, source_path, destination_path))
+                self.output.write_or_print('%s----Downloading %s TO %s\n' % (INDENT_2, source_path, destination_path))
                 source_type = self._check_path_type(source_path, 'remote')    # 一次远非核心程调用
                 # destination_type = self._check_path_type(destination_path, 'local')
                 if source_type == 'file':
@@ -393,7 +397,7 @@ class AutoTask:
                         destination_path = os.path.join(destination_path, os.path.basename(source_path)).replace('\\', '/')
                     dst_parent_type = self._check_path_type(os.path.dirname(destination_path), 'local')
                     if dst_parent_type == 'file':
-                        self.output.write_or_print("{}Error: local {} is file\n".format(' '*INDENT_3, os.path.dirname(destination_path)), color=31)
+                        self.output.write_or_print("{}Error: local {} is file\n".format(INDENT_3, os.path.dirname(destination_path)), color=31)
                         self.output.print_lock()
                         event.set()
                         exit()
@@ -407,7 +411,7 @@ class AutoTask:
                     self._get_dirs(source_path, source_path, destination_path)
                     self.output.print_lock()
                 else:
-                    self.output.write_or_print('%sRemote %s is not exist\n' % (' '*INDENT_3, source_path), color=31)
+                    self.output.write_or_print('%sRemote %s is not exist\n' % (INDENT_3, source_path), color=31)
                     self.output.print_lock()
                     event.set()
                     exit()
@@ -459,7 +463,10 @@ def main():
         if event.is_set():
             break
         auto_task = AutoTask(hostname, ip, port)
-        if not auto_task.create_sshclient():
+        c = auto_task.create_sshclient()
+        if c == 'continue':
+            continue
+        elif not c:
             break
         # 区别处理 cmd put get参数
         if arguments['cmd']:
@@ -482,7 +489,7 @@ if __name__ == "__main__":
         远程server上已开启的命令也不会因此中断,故而应该等待其完成并打印结果.
         '''
         if threading.active_count() > 1:
-            OutputText.print_color('\n----bye----: waiting for sub_threads exit ...')
+            OutputText.print_color('\n{}----bye----: waiting for sub_threads exit ...'.format(INDENT_1))
         else:
-            OutputText.print_color('\n----bye----')
+            OutputText.print_color('\n{}----bye----'.format(INDENT_1))
 
