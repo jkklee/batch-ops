@@ -374,6 +374,8 @@ class AutoTask:
                     self.output.print_lock()
                 elif source_type == 'directory':
                     '''判断src是目录'''
+                    if not source_path.endswith('/'):
+                        destination_path = os.path.join(destination_path, os.path.basename(source_path)).replace('\\', '/')
                     source_path, destination_path = self._process_arg_dir(source_path), self._process_arg_dir(destination_path)
                     self._put_dirs(source_path, destination_path)
                     self.output.print_lock()
@@ -407,6 +409,8 @@ class AutoTask:
                     self.output.print_lock()
                 elif source_type == 'directory':
                     '''判断source_path是目录'''
+                    if not source_path.endswith('/'):
+                        destination_path = os.path.join(destination_path, os.path.basename(source_path)).replace('\\', '/')
                     source_path, destination_path = self._process_arg_dir(source_path), self._process_arg_dir(destination_path)
                     self._get_dirs(source_path, source_path, destination_path)
                     self.output.print_lock()
